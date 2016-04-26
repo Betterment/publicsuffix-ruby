@@ -1,9 +1,9 @@
 # -*- encoding: utf-8 -*-
-# stub: public_suffix 1.4.6 ruby lib
+# stub: public_suffix 1.4.6.betterment.1 ruby lib
 
 Gem::Specification.new do |s|
   s.name = "public_suffix"
-  s.version = "1.4.6"
+  s.version = "1.4.6.betterment.1"
 
   s.required_rubygems_version = Gem::Requirement.new(">= 0") if s.respond_to? :required_rubygems_version=
   s.require_paths = ["lib"]
