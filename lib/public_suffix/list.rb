@@ -1,11 +1,8 @@
-#--
-# Public Suffix
+# = Public Suffix
 #
 # Domain name parser based on the Public Suffix List.
 #
-# Copyright (c) 2009-2014 Simone Carletti <weppos@weppos.net>
-#++
-
+# Copyright (c) 2009-2017 Simone Carletti <weppos@weppos.net>
 
 module PublicSuffix
 
@@ -38,23 +35,18 @@ module PublicSuffix
   # The {PublicSuffix::List.default} rule list is used
   # to tokenize and validate a domain.
   #
-  # {PublicSuffix::List} implements +Enumerable+ module.
-  #
   class List
-    include Enumerable
 
-    class << self
-      attr_accessor :default
-      attr_accessor :default_definition
-    end
+    DEFAULT_LIST_PATH = File.expand_path("../../data/list.txt", __dir__)
 
     # Gets the default rule list.
+    #
     # Initializes a new {PublicSuffix::List} parsing the content
-    # of {PublicSuffix::List.default_definition}, if required.
+    # of {PublicSuffix::List.default_list_content}, if required.
     #
     # @return [PublicSuffix::List]
-    def self.default
-      @default ||= parse(default_definition)
+    def self.default(**options)
+      @default ||= parse(File.read(DEFAULT_LIST_PATH), options)
     end
 
     # Sets the default rule list to +value+.
@@ -67,116 +59,54 @@ module PublicSuffix
       @default = value
     end
 
-    # Shows if support for private (non-ICANN) domains is enabled or not
-    #
-    # @return [Boolean]
-    def self.private_domains?
-      @private_domains != false
-    end
-
-    # Enables/disables support for private (non-ICANN) domains
-    # Implicitly reloads the list
-    # @param [Boolean] enable/disable support
-    #
-    # @return [PublicSuffix::List]
-    def self.private_domains=(value)
-      @private_domains = !!value
-      self.clear
-    end
-
-    # Sets the default rule list to +nil+.
-    #
-    # @return [self]
-    def self.clear
-      self.default = nil
-      self
-    end
-
-    # Resets the default rule list and reinitialize it
-    # parsing the content of {PublicSuffix::List.default_definition}.
-    #
-    # @return [PublicSuffix::List]
-    def self.reload
-      self.clear.default
-    end
-
-    # Gets the default definition list.
-    # Can be any <tt>IOStream</tt> including a <tt>File</tt>
-    # or a simple <tt>String</tt>.
-    # The object must respond to <tt>#each_line</tt>.
-    #
-    # @return [File]
-    def self.default_definition
-      @default_definition || File.new(File.join(File.dirname(__FILE__), "..", "definitions.txt"), "r:utf-8")
-    end
-
     # Parse given +input+ treating the content as Public Suffix List.
     #
     # See http://publicsuffix.org/format/ for more details about input format.
     #
-    # @param [String] input The rule list to parse.
-    #
+    # @param  string [#each_line] The list to parse.
+    # @param  private_domains [Boolean] whether to ignore the private domains section.
     # @return [Array<PublicSuffix::Rule::*>]
-    def self.parse(input)
+    def self.parse(input, private_domains: true)
+      comment_token = "//".freeze
+      private_token = "===BEGIN PRIVATE DOMAINS===".freeze
+      section = nil # 1 == ICANN, 2 == PRIVATE
+
       new do |list|
         input.each_line do |line|
           line.strip!
-          break if !private_domains? && line.include?('===BEGIN PRIVATE DOMAINS===')
-          # strip blank lines
-          if line.empty?
+          case # rubocop:disable Style/EmptyCaseCondition
+
+          # skip blank lines
+          when line.empty?
             next
-          # strip comments
-          elsif line =~ %r{^//}
+
+          # include private domains or stop scanner
+          when line.include?(private_token)
+            break if !private_domains
+            section = 2
+
+          # skip comments
+          when line.start_with?(comment_token)
             next
-          # append rule
+
           else
-            list.add(Rule.factory(line), false)
+            list.add(Rule.factory(line, private: section == 2))
+
           end
         end
       end
     end
 
 
-    # Gets the array of rules.
-    #
-    # @return [Array<PublicSuffix::Rule::*>]
-    attr_reader :rules
-
-    # Gets the naive index, a hash that with the keys being the first label of
-    # every rule pointing to an array of integers (indexes of the rules in @rules).
-    #
-    # @return [Array]
-    attr_reader :indexes
-
-
     # Initializes an empty {PublicSuffix::List}.
     #
     # @yield [self] Yields on self.
     # @yieldparam [PublicSuffix::List] self The newly created instance.
-    #
-    def initialize(&block)
-      @rules   = []
-      @indexes = {}
+    def initialize
+      @rules = {}
       yield(self) if block_given?
-      create_index!
     end
 
-    # Creates a naive index for +@rules+. Just a hash that will tell
-    # us where the elements of +@rules+ are relative to its first
-    # {PublicSuffix::Rule::Base#labels} element.
-    #
-    # For instance if @rules[5] and @rules[4] are the only elements of the list
-    # where Rule#labels.first is 'us' @indexes['us'] #=> [5,4], that way in 
-    # select we can avoid mapping every single rule against the candidate domain.
-    def create_index!
-      @rules.map { |l| l.labels.first }.each_with_index do |elm, inx|
-        if !@indexes.has_key?(elm)
-          @indexes[elm] = [inx]
-        else
-          @indexes[elm] << inx
-        end
-      end
-    end
 
     # Checks whether two lists are equal.
     #
@@ -184,56 +114,40 @@ module PublicSuffix
     # {PublicSuffix::List} and each +PublicSuffix::Rule::*+
     # in list <tt>one</tt> is available in list <tt>two</tt>, in the same order.
     #
-    # @param [PublicSuffix::List] other
-    #   The List to compare.
-    #
+    # @param  other [PublicSuffix::List] the List to compare
     # @return [Boolean]
     def ==(other)
       return false unless other.is_a?(List)
-      self.equal?(other) ||
-      self.rules == other.rules
+      equal?(other) || @rules == other.rules
     end
-    alias :eql? :==
+    alias eql? ==
 
     # Iterates each rule in the list.
-    def each(*args, &block)
-      @rules.each(*args, &block)
+    def each(&block)
+      Enumerator.new do |y|
+        @rules.each do |key, node|
+          y << entry_to_rule(node, key)
+        end
+      end.each(&block)
     end
 
-    # Gets the list as array.
-    #
-    # @return [Array<PublicSuffix::Rule::*>]
-    def to_a
-      @rules
-    end
 
-    # Adds the given object to the list
-    # and optionally refreshes the rule index.
+    # Adds the given object to the list and optionally refreshes the rule index.
     #
-    # @param [PublicSuffix::Rule::*] rule
-    #   The rule to add to the list.
-    # @param [Boolean] index
-    #   Set to true to recreate the rule index
-    #   after the rule has been added to the list.
-    #
+    # @param  rule [PublicSuffix::Rule::*] the rule to add to the list
     # @return [self]
-    #
-    # @see #create_index!
-    #
-    def add(rule, index = true)
-      @rules << rule
-      create_index! if index == true
+    def add(rule)
+      @rules[rule.value] = rule_to_entry(rule)
       self
     end
     alias << add
 
-    # Gets the number of elements in the list.
+    # Gets the number of rules in the list.
     #
     # @return [Integer]
     def size
       @rules.size
     end
-    alias length size
 
     # Checks whether the list is empty.
     #
@@ -242,7 +156,7 @@ module PublicSuffix
       @rules.empty?
     end
 
-    # Removes all elements.
+    # Removes all rules.
     #
     # @return [self]
     def clear
@@ -250,52 +164,81 @@ module PublicSuffix
       self
     end
 
-
-    # Returns the most appropriate rule for domain.
+    # Finds and returns the rule corresponding to the longest public suffix for the hostname.
     #
-    # From the Public Suffix List documentation:
-    #
-    # * If a hostname matches more than one rule in the file,
-    #   the longest matching rule (the one with the most levels) will be used.
-    # * An exclamation mark (!) at the start of a rule marks an exception to a previous wildcard rule.
-    #   An exception rule takes priority over any other matching rule.
-    #
-    # == Algorithm description
-    #
-    # * Match domain against all rules and take note of the matching ones.
-    # * If no rules match, the prevailing rule is "*".
-    # * If more than one rule matches, the prevailing rule is the one which is an exception rule.
-    # * If there is no matching exception rule, the prevailing rule is the one with the most labels.
-    # * If the prevailing rule is a exception rule, modify it by removing the leftmost label.
-    # * The public suffix is the set of labels from the domain
-    #   which directly match the labels of the prevailing rule (joined by dots).
-    # * The registered domain is the public suffix plus one additional label.
-    #
-    # @param  [String, #to_s] domain The domain name.
-    #
-    # @return [PublicSuffix::Rule::*, nil]
-    def find(domain)
-      rules = select(domain)
-      rules.select { |r|   r.type == :exception }.first ||
-      rules.inject { |t,r| t.length > r.length ? t : r }
+    # @param  name [#to_s] the hostname
+    # @param  default [PublicSuffix::Rule::*] the default rule to return in case no rule matches
+    # @return [PublicSuffix::Rule::*]
+    def find(name, default: default_rule, **options)
+      rule = select(name, **options).inject do |l, r|
+        return r if r.class == Rule::Exception
+        l.length > r.length ? l : r
+      end
+      rule || default
     end
 
-    # Selects all the rules matching given domain.
+    # Selects all the rules matching given hostame.
     #
-    # Will use +@indexes+ to try only the rules that share the same first label,
-    # that will speed up things when using +List.find('foo')+ a lot.
+    # If `ignore_private` is set to true, the algorithm will skip the rules that are flagged as
+    # private domain. Note that the rules will still be part of the loop.
+    # If you frequently need to access lists ignoring the private domains,
+    # you should create a list that doesn't include these domains setting the
+    # `private_domains: false` option when calling {.parse}.
     #
-    # @param  [String, #to_s] domain The domain name.
+    # Note that this method is currently private, as you should not rely on it. Instead,
+    # the public interface is {#find}. The current internal algorithm allows to return all
+    # matching rules, but different data structures may not be able to do it, and instead would
+    # return only the match. For this reason, you should rely on {#find}.
     #
+    # @param  name [#to_s] the hostname
+    # @param  ignore_private [Boolean]
     # @return [Array<PublicSuffix::Rule::*>]
-    def select(domain)
-      # raise DomainInvalid, "Blank domain"
-      return [] if domain.to_s !~ /[^[:space:]]/
-      # raise DomainInvalid, "`#{domain}' is not expected to contain a scheme"
-      return [] if domain.include?("://")
+    def select(name, ignore_private: false)
+      name = name.to_s
 
-      indices = (@indexes[Domain.domain_to_labels(domain).first] || [])
-      @rules.values_at(*indices).select { |rule| rule.match?(domain) }
+      parts = name.split(DOT).reverse!
+      index = 0
+      query = parts[index]
+      rules = []
+
+      loop do
+        match = @rules[query]
+        if !match.nil? && (ignore_private == false || match.private == false)
+          rules << entry_to_rule(match, query)
+        end
+
+        index += 1
+        break if index >= parts.size
+        query = parts[index] + DOT + query
+      end
+
+      rules
+    end
+    private :select
+
+    # Gets the default rule.
+    #
+    # @see PublicSuffix::Rule.default_rule
+    #
+    # @return [PublicSuffix::Rule::*]
+    def default_rule
+      PublicSuffix::Rule.default
+    end
+
+
+    protected
+
+    attr_reader :rules
+
+
+    private
+
+    def entry_to_rule(entry, value)
+      entry.type.new(value: value, length: entry.length, private: entry.private)
+    end
+
+    def rule_to_entry(rule)
+      Rule::Entry.new(rule.class, rule.length, rule.private)
     end
 
   end

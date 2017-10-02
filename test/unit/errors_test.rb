@@ -1,6 +1,6 @@
-require 'test_helper'
+require "test_helper"
 
-class ErrorsTest < Test::Unit::TestCase
+class ErrorsTest < Minitest::Test
 
   # Inherits from StandardError
   def test_error_inheritance

@@ -1,19 +1,156 @@
-# Public Suffix List
+# Public Suffix <small>for Ruby</small>
 
-<tt>PublicSuffix</tt> is a Ruby domain name parser based on the [Public Suffix List](http://publicsuffix.org/).
+<tt>PublicSuffix</tt> is a Ruby domain name parser based on the [Public Suffix List](https://publicsuffix.org/).
 
-[![Build Status](https://secure.travis-ci.org/weppos/publicsuffix-ruby.png)](http://travis-ci.org/weppos/publicsuffix-ruby)
+[![Build Status](https://travis-ci.org/weppos/publicsuffix-ruby.svg?branch=master)](https://travis-ci.org/weppos/publicsuffix-ruby)
+
+
+## Requirements
+
+- Ruby >= 2.1
+
+For an older versions of Ruby use a previous release.
+
+
+## Installation
+
+You can install the gem manually:
+
+```shell
+$ gem install public_suffix
+```
+
+Or use Bundler and define it as a dependency in your `Gemfile`:
+
+```ruby
+gem 'public_suffix'
+```
+
+If you are upgrading to 2.0, see [2.0-Upgrade.md](2.0-Upgrade.md).
+
+## Usage
+
+Extract the domain out from a name:
+
+```ruby
+PublicSuffix.domain("google.com")
+# => "google.com"
+PublicSuffix.domain("www.google.com")
+# => "google.com"
+PublicSuffix.domain("www.google.co.uk")
+# => "google.co.uk"
+```
+
+Parse a domain without subdomains:
+
+```ruby
+domain = PublicSuffix.parse("google.com")
+# => #<PublicSuffix::Domain>
+domain.tld
+# => "com"
+domain.sld
+# => "google"
+domain.trd
+# => nil
+domain.domain
+# => "google.com"
+domain.subdomain
+# => nil
+```
+
+Parse a domain with subdomains:
+
+```ruby
+domain = PublicSuffix.parse("www.google.com")
+# => #<PublicSuffix::Domain>
+domain.tld
+# => "com"
+domain.sld
+# => "google"
+domain.trd
+# => "www"
+domain.domain
+# => "google.com"
+domain.subdomain
+# => "www.google.com"
+```
+
+Simple validation example:
+
+```ruby
+PublicSuffix.valid?("google.com")
+# => true
+
+PublicSuffix.valid?("www.google.com")
+# => true
+
+# Explicitly forbidden, it is listed as a private domain
+PublicSuffix.valid?("blogspot.com")
+# => false
+
+# Unknown/not-listed TLD domains are valid by default
+PublicSuffix.valid?("example.tldnotlisted")
+# => true
+```
+
+Strict validation (without applying the default * rule):
+
+```ruby
+PublicSuffix.valid?("example.tldnotlisted", default_rule: nil)
+# => false
+```
+
+
+## Fully Qualified Domain Names
+
+This library automatically recognizes Fully Qualified Domain Names. A FQDN is a domain name that end with a trailing dot.
+
+```ruby
+# Parse a standard domain name
+PublicSuffix.domain("www.google.com")
+# => "google.com"
+
+# Parse a fully qualified domain name
+PublicSuffix.domain("www.google.com.")
+# => "google.com"
+```
+
+## Private domains
+
+This library has support for switching off support for private (non-ICANN).
+
+```ruby
+# Extract a domain including private domains (by default)
+PublicSuffix.domain("something.blogspot.com")
+# => "something.blogspot.com"
+
+# Extract a domain excluding private domains
+PublicSuffix.domain("something.blogspot.com", ignore_private: true)
+# => "blogspot.com"
+
+# It also works for #parse and #valid?
+PublicSuffix.parse("something.blogspot.com", ignore_private: true)
+PublicSuffix.valid?("something.blogspot.com", ignore_private: true)
+```
+
+If you don't care about private domains at all, it's more efficient to exclude them when the list is parsed:
+
+```ruby
+# Disable support for private TLDs
+PublicSuffix::List.default = PublicSuffix::List.parse(File.read(PublicSuffix::List::DEFAULT_LIST_PATH), private_domains: false)
+# => "blogspot.com"
+PublicSuffix.domain("something.blogspot.com")
+# => "blogspot.com"
+```
 
 
 ## What is the Public Suffix List?
 
-The Public Suffix List is a cross-vendor initiative to provide an accurate list of domain name suffixes.
+The [Public Suffix List](https://publicsuffix.org) is a cross-vendor initiative to provide an accurate list of domain name suffixes.
 
 The Public Suffix List is an initiative of the Mozilla Project, but is maintained as a community resource. It is available for use in any software, but was originally created to meet the needs of browser manufacturers.
 
 A "public suffix" is one under which Internet users can directly register names. Some examples of public suffixes are ".com", ".co.uk" and "pvt.k12.wy.us". The Public Suffix List is a list of all known public suffixes.
-
-Source: http://publicsuffix.org
 
 
 ## Why the Public Suffix List is better than any available Regular Expression parser?
@@ -28,101 +165,13 @@ As well as being used to prevent cookies from being set where they shouldn't be,
 
 Source: https://wiki.mozilla.org/Public_Suffix_List
 
-Not convinced yet? Check out [this real world example](http://stackoverflow.com/q/288810/123527).
+Not convinced yet? Check out [this real world example](https://stackoverflow.com/q/288810/123527).
 
 
-## Requirements
+## Does <tt>PublicSuffix</tt> make requests to Public Suffix List website?
 
-- Ruby >= 1.9.3
+No. <tt>PublicSuffix</tt> comes with a bundled list. It does not make any HTTP requests to parse or validate a domain.
 
-For an older versions of Ruby use a previous release. We also support several [Ruby implementations](http://simonecarletti.com/code/publicsuffix/#implementations).
-
-
-## Installation
-
-The best way to install *PublicSuffix* is via [RubyGems](https://rubygems.org/).
-
-    $ gem install public_suffix
-
-You might need administrator privileges on your system to install the gem.
-
-
-## Basic Usage
-
-Example domain without subdomains.
-
-    domain = PublicSuffix.parse("google.com")
-    # => #<PublicSuffix::Domain>
-    domain.tld
-    # => "com"
-    domain.sld
-    # => "google"
-    domain.trd
-    # => nil
-    domain.domain
-    # => "google.com"
-    domain.subdomain
-    # => nil
-
-Example domain with subdomains.
-
-    domain = PublicSuffix.parse("www.google.com")
-    # => #<PublicSuffix::Domain>
-    domain.tld
-    # => "com"
-    domain.sld
-    # => "google"
-    domain.trd
-    # => "www"
-    domain.domain
-    # => "google.com"
-    domain.subdomain
-    # => "www.google.com"
-
-Simple validation example.
-
-    PublicSuffix.valid?("google.com")
-    # => true
-
-    PublicSuffix.valid?("www.google.com")
-    # => true
-
-    PublicSuffix.valid?("x.yz")
-    # => false
-
-## Fully Qualified Domain Names
-
-This library automatically recognizes Fully Qualified Domain Names. A FQDN is a domain name that end with a trailing dot.
-
-    # Parse a standard domain name
-    domain = PublicSuffix.parse("www.google.com")
-    # => #<PublicSuffix::Domain>
-    domain.tld
-    # => "com"
-
-    # Parse a fully qualified domain name
-    domain = PublicSuffix.parse("www.google.com.")
-    # => #<PublicSuffix::Domain>
-    domain.tld
-    # => "com"
-
-## Private domains
-
-This library has support for switching off support for private (non-ICANN) domains
-
-    # Parse a domain on a private TLD
-    domain = PublicSuffix.parse("something.blogspot.com")
-    # => #<PublicSuffix::Domain>
-    domain.tld
-    # => "blogspot.com"
-
-    # Disable support for private TLDs
-    PublicSuffix::List.private_domains = false
-    # => #<PublicSuffix::List>
-    domain = PublicSuffix.parse("something.blogspot.com")
-    # => #<PublicSuffix::Domain>
-    domain.tld
-    # => "com"
 
 ## Feedback and bug reports
 
@@ -135,10 +184,10 @@ Report issues or feature requests to [GitHub Issues](https://github.com/weppos/p
 
 ## More
 
-* [Homepage](http://simonecarletti.com/code/publicsuffix)
-* [Repository](https://github.com/weppos/publicsuffix-ruby)
-* [API Documentation](http://rubydoc.info/gems/public_suffix)
-* [Introducing the Public Suffix List library for Ruby](http://simonecarletti.com/blog/2010/06/public-suffix-list-library-for-ruby/)
+- [Homepage](https://simonecarletti.com/code/publicsuffix-ruby)
+- [Repository](https://github.com/weppos/publicsuffix-ruby)
+- [API Documentation](http://rubydoc.info/gems/public_suffix)
+- [Introducing the Public Suffix List library for Ruby](https://simonecarletti.com/blog/2010/06/public-suffix-list-library-for-ruby/)
 
 
 ## Changelog
@@ -148,4 +197,6 @@ See the [CHANGELOG.md](CHANGELOG.md) file for details.
 
 ## License
 
-Copyright (c) 2009-2014 Simone Carletti. This is Free Software distributed under the MIT license.
+Copyright (c) 2009-2017 Simone Carletti. This is Free Software distributed under the MIT license.
+
+The [Public Suffix List source](https://publicsuffix.org/list/) is subject to the terms of the Mozilla Public License, v. 2.0.

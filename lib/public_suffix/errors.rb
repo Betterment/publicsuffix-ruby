@@ -1,20 +1,16 @@
-#--
-# Public Suffix
+# = Public Suffix
 #
 # Domain name parser based on the Public Suffix List.
 #
-# Copyright (c) 2009-2014 Simone Carletti <weppos@weppos.net>
-#++
-
+# Copyright (c) 2009-2017 Simone Carletti <weppos@weppos.net>
 
 module PublicSuffix
 
   class Error < StandardError
   end
 
-  # Raised when trying to parse an invalid domain.
-  # A domain is considered invalid when no rule is found
-  # in the definition list.
+  # Raised when trying to parse an invalid name.
+  # A name is considered invalid when no rule is found in the definition list.
   #
   # @example
   #
@@ -27,10 +23,7 @@ module PublicSuffix
   class DomainInvalid < Error
   end
 
-  # Raised when trying to parse a domain
-  # which is formally defined by a rule,
-  # but the rules set a requirement which is not satisfied
-  # by the input you are trying to parse.
+  # Raised when trying to parse a name that matches a suffix.
   #
   # @example
   #
@@ -42,12 +35,5 @@ module PublicSuffix
   #
   class DomainNotAllowed < DomainInvalid
   end
-
-
-  # Backward Compatibility
-  #
-  # @deprecated Use {PublicSuffix::DomainInvalid}.
-  #
-  InvalidDomain = DomainInvalid
 
 end

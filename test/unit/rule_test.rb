@@ -1,6 +1,6 @@
-require 'test_helper'
+require "test_helper"
 
-class PublicSuffix::RuleTest < Test::Unit::TestCase
+class PublicSuffix::RuleTest < Minitest::Test
 
   def test_factory_should_return_rule_normal
     rule = PublicSuffix::Rule.factory("com")
@@ -23,10 +23,18 @@ class PublicSuffix::RuleTest < Test::Unit::TestCase
     assert_instance_of PublicSuffix::Rule::Wildcard, rule
   end
 
+
+  def test_default_returns_default_wildcard
+    default = PublicSuffix::Rule.default
+    assert_equal PublicSuffix::Rule::Wildcard.build("*"), default
+    assert_equal %w( example tldnotlisted ), default.decompose("example.tldnotlisted")
+    assert_equal %w( www.example tldnotlisted ), default.decompose("www.example.tldnotlisted")
+  end
+
 end
 
 
-class PublicSuffix::RuleBaseTest < Test::Unit::TestCase
+class PublicSuffix::RuleBaseTest < Minitest::Test
 
   class ::PublicSuffix::Rule::Test < ::PublicSuffix::Rule::Base
   end
@@ -37,135 +45,114 @@ class PublicSuffix::RuleBaseTest < Test::Unit::TestCase
 
 
   def test_initialize
-    rule = @klass.new("verona.it")
-    assert_instance_of @klass,          rule
-
-    assert_equal :base,                 rule.type
-    assert_equal "verona.it",           rule.name
-    assert_equal "verona.it",           rule.value
-    assert_equal %w(verona it).reverse, rule.labels
+    rule = @klass.new(value: "verona.it")
+    assert_instance_of @klass,  rule
+    assert_equal "verona.it",   rule.value
   end
 
+
   def test_equality_with_self
-    rule = PublicSuffix::Rule::Base.new("foo")
+    rule = PublicSuffix::Rule::Base.new(value: "foo")
     assert_equal rule, rule
   end
 
+  # rubocop:disable Style/SingleLineMethods
   def test_equality_with_internals
-    assert_equal      @klass.new("foo"), @klass.new("foo")
-    assert_not_equal  @klass.new("foo"), @klass.new("bar")
-    assert_not_equal  @klass.new("foo"), PublicSuffix::Rule::Test.new("bar")
-    assert_not_equal  @klass.new("foo"), Class.new { def name; foo; end }.new
+    assert_equal @klass.new(value: "foo"), @klass.new(value: "foo")
+    refute_equal @klass.new(value: "foo"), @klass.new(value: "bar")
+    refute_equal @klass.new(value: "foo"), PublicSuffix::Rule::Test.new(value: "foo")
+    refute_equal @klass.new(value: "foo"), PublicSuffix::Rule::Test.new(value: "bar")
+    refute_equal @klass.new(value: "foo"), Class.new { def name; foo; end }.new
   end
-
+  # rubocop:enable Style/SingleLineMethods
 
   def test_match
-    assert  @klass.new("uk").match?("example.uk")
-    assert !@klass.new("gk").match?("example.uk")
-    assert !@klass.new("example").match?("example.uk")
+    [
+        # standard match
+        [PublicSuffix::Rule.factory("uk"), "uk", true],
+        [PublicSuffix::Rule.factory("uk"), "example.uk", true],
+        [PublicSuffix::Rule.factory("uk"), "example.co.uk", true],
+        [PublicSuffix::Rule.factory("co.uk"), "example.co.uk", true],
 
-    assert  @klass.new("uk").match?("example.co.uk")
-    assert !@klass.new("gk").match?("example.co.uk")
-    assert !@klass.new("co").match?("example.co.uk")
+        # FIXME
+        # [PublicSuffix::Rule.factory("*.com"), "com", false],
+        [PublicSuffix::Rule.factory("*.com"), "example.com", true],
+        [PublicSuffix::Rule.factory("*.com"), "foo.example.com", true],
+        [PublicSuffix::Rule.factory("!example.com"), "com", false],
+        [PublicSuffix::Rule.factory("!example.com"), "example.com", true],
+        [PublicSuffix::Rule.factory("!example.com"), "foo.example.com", true],
 
-    assert  @klass.new("co.uk").match?("example.co.uk")
-    assert !@klass.new("uk.co").match?("example.co.uk")
-    assert !@klass.new("go.uk").match?("example.co.uk")
+        # TLD mismatch
+        [PublicSuffix::Rule.factory("gk"), "example.uk", false],
+        [PublicSuffix::Rule.factory("gk"), "example.co.uk", false],
+        [PublicSuffix::Rule.factory("co.uk"), "uk", false],
+
+        # general mismatch
+        [PublicSuffix::Rule.factory("uk.co"), "example.co.uk", false],
+        [PublicSuffix::Rule.factory("go.uk"), "example.co.uk", false],
+        [PublicSuffix::Rule.factory("co.uk"), "uk", false],
+
+        # partial matches/mismatches
+        [PublicSuffix::Rule.factory("co"), "example.co.uk", false],
+        [PublicSuffix::Rule.factory("example"), "example.uk", false],
+        [PublicSuffix::Rule.factory("le.it"), "example.it", false],
+        [PublicSuffix::Rule.factory("le.it"), "le.it", true],
+        [PublicSuffix::Rule.factory("le.it"), "foo.le.it", true],
+
+    ].each do |rule, input, expected|
+      assert_equal expected, rule.match?(input)
+    end
   end
 
-  def test_length
-    assert_raise(NotImplementedError) { @klass.new("com").length }
-  end
 
   def test_parts
-    assert_raise(NotImplementedError) { @klass.new("com").parts }
+    assert_raises(NotImplementedError) { @klass.new(value: "com").parts }
   end
 
   def test_decompose
-    assert_raise(NotImplementedError) { @klass.new("com").decompose("google.com") }
+    assert_raises(NotImplementedError) { @klass.new(value: "com").decompose("google.com") }
   end
 
 end
 
 
-class PublicSuffix::RuleNormalTest < Test::Unit::TestCase
+class PublicSuffix::RuleNormalTest < Minitest::Test
 
   def setup
     @klass = PublicSuffix::Rule::Normal
   end
 
 
-  def test_initialize
-    rule = @klass.new("verona.it")
+  def test_build
+    rule = @klass.build("verona.it")
     assert_instance_of @klass,              rule
-    assert_equal :normal,                   rule.type
-    assert_equal "verona.it",               rule.name
     assert_equal "verona.it",               rule.value
-    assert_equal %w(verona it).reverse,     rule.labels
-  end
-
-
-  def test_match
-    assert  @klass.new("uk").match?("example.uk")
-    assert !@klass.new("gk").match?("example.uk")
-    assert !@klass.new("example").match?("example.uk")
-
-    assert  @klass.new("uk").match?("example.co.uk")
-    assert !@klass.new("gk").match?("example.co.uk")
-    assert !@klass.new("co").match?("example.co.uk")
-
-    assert  @klass.new("co.uk").match?("example.co.uk")
-    assert !@klass.new("uk.co").match?("example.co.uk")
-    assert !@klass.new("go.uk").match?("example.co.uk")
-  end
-
-  def test_match_with_fully_qualified_domain_name
-    assert  @klass.new("com").match?("com.")
-    assert  @klass.new("com").match?("example.com.")
-    assert  @klass.new("com").match?("www.example.com.")
-  end
-
-  def test_allow
-    assert !@klass.new("com").allow?("com")
-    assert  @klass.new("com").allow?("example.com")
-    assert  @klass.new("com").allow?("www.example.com")
-  end
-
-  def test_allow_with_fully_qualified_domain_name
-    assert !@klass.new("com").allow?("com.")
-    assert  @klass.new("com").allow?("example.com.")
-    assert  @klass.new("com").allow?("www.example.com.")
+    assert_equal "verona.it",               rule.rule
   end
 
 
   def test_length
-    assert_equal 1, @klass.new("com").length
-    assert_equal 2, @klass.new("co.com").length
-    assert_equal 3, @klass.new("mx.co.com").length
+    assert_equal 1, @klass.build("com").length
+    assert_equal 2, @klass.build("co.com").length
+    assert_equal 3, @klass.build("mx.co.com").length
   end
 
   def test_parts
-    assert_equal %w(com), @klass.new("com").parts
-    assert_equal %w(co com), @klass.new("co.com").parts
-    assert_equal %w(mx co com), @klass.new("mx.co.com").parts
+    assert_equal %w(com), @klass.build("com").parts
+    assert_equal %w(co com), @klass.build("co.com").parts
+    assert_equal %w(mx co com), @klass.build("mx.co.com").parts
   end
 
   def test_decompose
-    assert_equal [nil, nil], @klass.new("com").decompose("com")
-    assert_equal %w( example com ), @klass.new("com").decompose("example.com")
-    assert_equal %w( foo.example com ), @klass.new("com").decompose("foo.example.com")
-  end
-
-  def test_decompose_with_fully_qualified_domain_name
-    assert_equal [nil, nil], @klass.new("com").decompose("com.")
-    assert_equal %w( example com ), @klass.new("com").decompose("example.com.")
-    assert_equal %w( foo.example com ), @klass.new("com").decompose("foo.example.com.")
+    assert_equal [nil, nil], @klass.build("com").decompose("com")
+    assert_equal %w( example com ), @klass.build("com").decompose("example.com")
+    assert_equal %w( foo.example com ), @klass.build("com").decompose("foo.example.com")
   end
 
 end
 
 
-class PublicSuffix::RuleExceptionTest < Test::Unit::TestCase
+class PublicSuffix::RuleExceptionTest < Minitest::Test
 
   def setup
     @klass = PublicSuffix::Rule::Exception
@@ -173,70 +160,33 @@ class PublicSuffix::RuleExceptionTest < Test::Unit::TestCase
 
 
   def test_initialize
-    rule = @klass.new("!british-library.uk")
-    assert_instance_of @klass,                    rule
-    assert_equal :exception,                      rule.type
-    assert_equal "!british-library.uk",           rule.name
-    assert_equal "british-library.uk",            rule.value
-    assert_equal %w(british-library uk).reverse,  rule.labels
-  end
-
-
-  def test_match
-    assert  @klass.new("!uk").match?("example.co.uk")
-    assert !@klass.new("!gk").match?("example.co.uk")
-    assert  @klass.new("!co.uk").match?("example.co.uk")
-    assert !@klass.new("!go.uk").match?("example.co.uk")
-    assert  @klass.new("!british-library.uk").match?("british-library.uk")
-    assert !@klass.new("!british-library.uk").match?("example.co.uk")
-  end
-
-  def test_match_with_fully_qualified_domain_name
-    assert  @klass.new("!uk").match?("uk.")
-    assert  @klass.new("!uk").match?("co.uk.")
-    assert  @klass.new("!uk").match?("example.co.uk.")
-    assert  @klass.new("!uk").match?("www.example.co.uk.")
-  end
-
-  def test_allow
-    assert !@klass.new("!british-library.uk").allow?("uk")
-    assert  @klass.new("!british-library.uk").allow?("british-library.uk")
-    assert  @klass.new("!british-library.uk").allow?("www.british-library.uk")
-  end
-
-  def test_allow_with_fully_qualified_domain_name
-    assert !@klass.new("!british-library.uk").allow?("uk.")
-    assert  @klass.new("!british-library.uk").allow?("british-library.uk.")
-    assert  @klass.new("!british-library.uk").allow?("www.british-library.uk.")
+    rule = @klass.build("!british-library.uk")
+    assert_instance_of @klass, rule
+    assert_equal "british-library.uk", rule.value
+    assert_equal "!british-library.uk", rule.rule
   end
 
 
   def test_length
-    assert_equal 1, @klass.new("!british-library.uk").length
-    assert_equal 2, @klass.new("!foo.british-library.uk").length
+    assert_equal 2, @klass.build("!british-library.uk").length
+    assert_equal 3, @klass.build("!foo.british-library.uk").length
   end
 
   def test_parts
-    assert_equal %w( uk ), @klass.new("!british-library.uk").parts
-    assert_equal %w( tokyo jp ), @klass.new("!metro.tokyo.jp").parts
+    assert_equal %w( uk ), @klass.build("!british-library.uk").parts
+    assert_equal %w( tokyo jp ), @klass.build("!metro.tokyo.jp").parts
   end
 
   def test_decompose
-    assert_equal [nil, nil], @klass.new("!british-library.uk").decompose("uk")
-    assert_equal %w( british-library uk ), @klass.new("!british-library.uk").decompose("british-library.uk")
-    assert_equal %w( foo.british-library uk ), @klass.new("!british-library.uk").decompose("foo.british-library.uk")
-  end
-
-  def test_decompose_with_fully_qualified_domain_name
-    assert_equal [nil, nil], @klass.new("!british-library.uk").decompose("uk.")
-    assert_equal %w( british-library uk ), @klass.new("!british-library.uk").decompose("british-library.uk.")
-    assert_equal %w( foo.british-library uk ), @klass.new("!british-library.uk").decompose("foo.british-library.uk.")
+    assert_equal [nil, nil], @klass.build("!british-library.uk").decompose("uk")
+    assert_equal %w( british-library uk ), @klass.build("!british-library.uk").decompose("british-library.uk")
+    assert_equal %w( foo.british-library uk ), @klass.build("!british-library.uk").decompose("foo.british-library.uk")
   end
 
 end
 
 
-class PublicSuffix::RuleWildcardTest < Test::Unit::TestCase
+class PublicSuffix::RuleWildcardTest < Minitest::Test
 
   def setup
     @klass = PublicSuffix::Rule::Wildcard
@@ -244,64 +194,27 @@ class PublicSuffix::RuleWildcardTest < Test::Unit::TestCase
 
 
   def test_initialize
-    rule = @klass.new("*.aichi.jp")
-    assert_instance_of @klass,              rule
-    assert_equal :wildcard,                 rule.type
-    assert_equal "*.aichi.jp",              rule.name
-    assert_equal "aichi.jp",                rule.value
-    assert_equal %w(aichi jp).reverse,      rule.labels
-  end
-
-
-  def test_match
-    assert  @klass.new("*.uk").match?("example.uk")
-    assert  @klass.new("*.uk").match?("example.co.uk")
-    assert  @klass.new("*.co.uk").match?("example.co.uk")
-    assert !@klass.new("*.go.uk").match?("example.co.uk")
-  end
-
-  def test_match_with_fully_qualified_domain_name
-    assert  @klass.new("*.uk").match?("uk.")
-    assert  @klass.new("*.uk").match?("co.uk.")
-    assert  @klass.new("*.uk").match?("example.co.uk.")
-    assert  @klass.new("*.uk").match?("www.example.co.uk.")
-  end
-
-  def test_allow
-    assert !@klass.new("*.uk").allow?("uk")
-    assert !@klass.new("*.uk").allow?("co.uk")
-    assert  @klass.new("*.uk").allow?("example.co.uk")
-    assert  @klass.new("*.uk").allow?("www.example.co.uk")
-  end
-
-  def test_allow_with_fully_qualified_domain_name
-    assert !@klass.new("*.uk").allow?("uk.")
-    assert !@klass.new("*.uk").allow?("co.uk.")
-    assert  @klass.new("*.uk").allow?("example.co.uk.")
-    assert  @klass.new("*.uk").allow?("www.example.co.uk.")
+    rule = @klass.build("*.aichi.jp")
+    assert_instance_of @klass, rule
+    assert_equal "aichi.jp", rule.value
+    assert_equal "*.aichi.jp", rule.rule
   end
 
 
   def test_length
-    assert_equal 2, @klass.new("*.uk").length
-    assert_equal 3, @klass.new("*.co.uk").length
+    assert_equal 2, @klass.build("*.uk").length
+    assert_equal 3, @klass.build("*.co.uk").length
   end
 
   def test_parts
-    assert_equal %w( uk ), @klass.new("*.uk").parts
-    assert_equal %w( co uk ), @klass.new("*.co.uk").parts
+    assert_equal %w( uk ), @klass.build("*.uk").parts
+    assert_equal %w( co uk ), @klass.build("*.co.uk").parts
   end
 
   def test_decompose
-    assert_equal [nil, nil], @klass.new("*.do").decompose("nic.do")
-    assert_equal %w( google co.uk ), @klass.new("*.uk").decompose("google.co.uk")
-    assert_equal %w( foo.google co.uk ), @klass.new("*.uk").decompose("foo.google.co.uk")
-  end
-
-  def test_decompose_with_fully_qualified_domain_name
-    assert_equal [nil, nil], @klass.new("*.do").decompose("nic.do.")
-    assert_equal %w( google co.uk ), @klass.new("*.uk").decompose("google.co.uk.")
-    assert_equal %w( foo.google co.uk ), @klass.new("*.uk").decompose("foo.google.co.uk.")
+    assert_equal [nil, nil], @klass.build("*.do").decompose("nic.do")
+    assert_equal %w( google co.uk ), @klass.build("*.uk").decompose("google.co.uk")
+    assert_equal %w( foo.google co.uk ), @klass.build("*.uk").decompose("foo.google.co.uk")
   end
 
 end
