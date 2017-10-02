@@ -12288,4 +12288,9 @@ za.org
 // Submitted by Olli Vanhoja <olli@zeit.co>
 now.sh
 
+// Test
+// Added in Betterment fork for local testing purposes after google chrome
+// started forcing https on the .dev TLD. More information at
+// https://threatpost.com/google-to-enforce-hsts-on-tlds-it-operates/128204/
+test
 // ===END PRIVATE DOMAINS===
